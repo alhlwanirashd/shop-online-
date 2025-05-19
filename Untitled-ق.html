@@ -1,16 +1,10 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>منصة التاجر - تسجيل دخول مندوب Firebase</title>
-
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>منصة بيع المنتجات</title>
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBvnWpykz1k45L6LM0A1ekIXAg3j1EMzls&libraries=places"></script>
-
   <style>
     body {
       margin: 0;
@@ -33,7 +27,7 @@
       max-width: 1000px;
       margin: auto;
     }
-    .form-section, .product-list, .vendor-table, .login-section, .commission-section, .delivery-login-section, .map-section, .payment-section {
+    .form-section, .product-list, .vendor-table, .login-section, .commission-section, .delivery-login-section, .vendor-login-section, .map-section, .payment-section {
       margin-bottom: 2rem;
       background: white;
       padding: 1.5rem;
@@ -78,7 +72,7 @@
       height: 300px;
       margin-top: 1rem;
     }
-    #currentDeliveryInfo {
+    #currentDeliveryInfo, #currentVendorInfo {
       margin-bottom: 1rem;
       font-weight: bold;
       color: #333;
@@ -91,12 +85,18 @@
   </header>
 
   <div class="container">
+    <section class="vendor-login-section">
+      <h2>تسجيل دخول التاجر</h2>
+      <input type="text" id="vendorName" placeholder="اسم التاجر">
+      <button onclick="loginVendor()">دخول</button>
+      <div id="currentVendorInfo"></div>
+    </section>
 
     <!-- نموذج إضافة المنتج -->
     <section class="form-section">
       <h2>إضافة منتج جديد</h2>
-      <input type="text" id="productName" placeholder="اسم المنتج" />
-      <input type="number" id="productPrice" placeholder="السعر" />
+      <input type="text" id="productName" placeholder="اسم المنتج">
+      <input type="number" id="productPrice" placeholder="السعر">
       <select id="productType">
         <option value="طعام">طعام</option>
         <option value="ملابس">ملابس</option>
@@ -117,117 +117,68 @@
       <ul id="deliveryHistory"></ul>
     </section>
 
-    <!-- خريطة واحتساب عمولة -->
+    <!-- خريطة وتسجيل المندوب -->
     <section class="map-section">
       <h2>احتساب عمولة التوصيل</h2>
-      <div id="currentDeliveryInfo">المندوب الحالي: لم يتم تسجيل الدخول</div>
-      <input type="text" id="origin" placeholder="موقع الانطلاق" />
-      <input type="text" id="destination" placeholder="الوجهة" />
+      <div id="currentDeliveryInfo"></div>
+      <input type="text" id="origin" placeholder="موقع الانطلاق">
+      <input type="text" id="destination" placeholder="الوجهة">
       <button onclick="calculateDistance()">احسب المسافة</button>
       <p id="distanceOutput"></p>
       <div id="map"></div>
-    </section>
-
-    <!-- تسجيل دخول مندوب برقم الهاتف -->
-    <section class="delivery-login-section">
-      <h2>تسجيل دخول المندوب برقم الهاتف</h2>
-      <input type="tel" id="deliveryPhone" placeholder="أدخل رقم الهاتف (مثلاً +9627xxxxxxx)" />
-      <div id="recaptcha-container"></div>
-      <button onclick="sendOTP()">إرسال رمز التحقق</button>
-
-      <input type="text" id="otp" placeholder="أدخل رمز التحقق" style="margin-top: 10px;" />
-      <button onclick="verifyOTP()">تأكيد الدخول</button>
+      <div class="delivery-login-section">
+        <h2>تسجيل دخول المندوب</h2>
+        <input type="text" id="deliveryName" placeholder="اسم المندوب">
+        <button onclick="loginDelivery()">دخول</button>
+      </div>
     </section>
 
     <!-- قسم الدفع -->
     <section class="payment-section">
       <h2>الدفع الإلكتروني عبر كليك</h2>
       <p>اختر قيمة للدفع:</p>
-      <input type="number" id="paymentAmount" placeholder="المبلغ بالدينار الأردني" />
+      <input type="number" id="paymentAmount" placeholder="المبلغ بالدينار الأردني">
       <button onclick="payWithCliq()">ادفع عبر كليك</button>
     </section>
   </div>
 
   <script>
-    // Firebase إعدادات - استبدل القيم بقيم مشروعك من Firebase Console
-    const firebaseConfig = {
-      apiKey: "YOUR_API_KEY_HERE",
-      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT_ID.appspot.com",
-      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-      appId: "YOUR_APP_ID"
-    };
-
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-
-    // متغيرات النظام
     let commissionRate = 0.10;
     const products = [];
     const vendorSales = {};
-    let currentVendor = 'تاجر_تجريبي'; // يمكنك تحديث النظام لإضافة تسجيل تجار لاحقًا
+    let currentVendor = '';
     let currentDelivery = '';
     const deliveryLogs = [];
-    let confirmationResult;
 
-    // تسجيل دخول مندوب Firebase
-    function sendOTP() {
-      const phoneNumber = document.getElementById('deliveryPhone').value.trim();
-      if (!phoneNumber) {
-        alert('يرجى إدخال رقم الهاتف');
+    function loginVendor() {
+      const name = document.getElementById('vendorName').value.trim();
+      if (!name) {
+        alert('يرجى إدخال اسم التاجر');
         return;
       }
-
-      window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
-        size: 'invisible',
-        callback: (response) => {
-          console.log('reCAPTCHA تم التحقق');
-        }
-      });
-
-      auth.signInWithPhoneNumber(phoneNumber, window.recaptchaVerifier)
-        .then((result) => {
-          confirmationResult = result;
-          alert('تم إرسال رمز التحقق إلى هاتفك');
-        })
-        .catch((error) => {
-          alert('حدث خطأ أثناء إرسال رمز التحقق: ' + error.message);
-        });
+      currentVendor = name;
+      document.getElementById("currentVendorInfo").innerText = `التاجر الحالي: ${name}`;
+      alert('تم تسجيل دخول التاجر: ' + name);
     }
 
-    function verifyOTP() {
-      const code = document.getElementById('otp').value.trim();
-      if (!code) {
-        alert('يرجى إدخال رمز التحقق');
+    function loginDelivery() {
+      const name = document.getElementById('deliveryName').value.trim();
+      if (!name) {
+        alert('يرجى إدخال اسم المندوب');
         return;
       }
-
-      confirmationResult.confirm(code)
-        .then((result) => {
-          const user = result.user;
-          currentDelivery = user.phoneNumber;
-          document.getElementById("currentDeliveryInfo").innerText = `المندوب الحالي: ${currentDelivery}`;
-          alert('تم تسجيل الدخول بنجاح!');
-        })
-        .catch((error) => {
-          alert('رمز التحقق غير صحيح أو انتهت صلاحيته');
-        });
+      currentDelivery = name;
+      document.getElementById("currentDeliveryInfo").innerText = `المندوب الحالي: ${name}`;
+      alert('تم تسجيل دخول المندوب: ' + name);
     }
 
-    // إضافة منتج جديد
     function addProduct() {
-      const name = document.getElementById('productName').value.trim();
+      const name = document.getElementById('productName').value;
       const price = parseFloat(document.getElementById('productPrice').value);
       const type = document.getElementById('productType').value;
 
-      if (!name || isNaN(price)) {
-        alert('يرجى تعبئة جميع الحقول بشكل صحيح');
-        return;
-      }
-
-      if (!currentVendor) {
-        alert('يجب تسجيل الدخول كتاجر أولاً (الوظيفة مؤقتة حالياً)');
+      if (!name || isNaN(price) || !currentVendor) {
+        alert('يرجى تعبئة الحقول وتسجيل دخول التاجر أولاً');
         return;
       }
 
@@ -240,12 +191,8 @@
       vendorSales[currentVendor] += price;
 
       renderProducts();
-      alert('تم إضافة المنتج بنجاح');
-      document.getElementById('productName').value = '';
-      document.getElementById('productPrice').value = '';
     }
 
-    // عرض المنتجات
     function renderProducts() {
       const container = document.getElementById('productContainer');
       container.innerHTML = '';
@@ -257,18 +204,71 @@
       });
     }
 
-    // احتساب المسافة وعمولة التوصيل
     function calculateDistance() {
-      const origin = document.getElementById("origin").value.trim();
-      const destination = document.getElementById("destination").value.trim();
-      if (!origin || !destination) {
-        alert('يرجى إدخال موقع الانطلاق والوجهة');
-        return;
-      }
-
+      const origin = document.getElementById("origin").value;
+      const destination = document.getElementById("destination").value;
       const service = new google.maps.DistanceMatrixService();
       service.getDistanceMatrix(
         {
           origins: [origin],
           destinations: [destination],
-          travelMode: google.maps.TravelMode.DRIVING
+          travelMode: google.maps.TravelMode.DRIVING,
+          unitSystem: google.maps.UnitSystem.METRIC
+        },
+        (response, status) => {
+          if (status !== "OK") {
+            alert("خطأ في احتساب المسافة: " + status);
+            return;
+          }
+          const distanceText = response.rows[0].elements[0].distance.text;
+          const distanceValue = response.rows[0].elements[0].distance.value / 1000;
+          const deliveryCommission = distanceValue * 0.25;
+          document.getElementById("distanceOutput").innerText = `المسافة: ${distanceText}، عمولة التوصيل: ${deliveryCommission.toFixed(2)} د.ا`;
+
+          if (currentDelivery) {
+            deliveryLogs.push(`${currentDelivery} قام بتوصيل من ${origin} إلى ${destination} (${distanceText}) وعمولة ${deliveryCommission.toFixed(2)} د.ا`);
+            renderDeliveryLog();
+          }
+
+          const map = new google.maps.Map(document.getElementById("map"), {
+            zoom: 10,
+            center: { lat: 31.963158, lng: 35.930359 },
+          });
+
+          const geocoder = new google.maps.Geocoder();
+          geocoder.geocode({ address: origin }, function(results, status) {
+            if (status === 'OK') {
+              new google.maps.Marker({ map: map, position: results[0].geometry.location });
+            }
+          });
+          geocoder.geocode({ address: destination }, function(results, status) {
+            if (status === 'OK') {
+              new google.maps.Marker({ map: map, position: results[0].geometry.location });
+            }
+          });
+        }
+      );
+    }
+
+    function renderDeliveryLog() {
+      const ul = document.getElementById('deliveryHistory');
+      ul.innerHTML = '';
+      deliveryLogs.forEach(log => {
+        const li = document.createElement('li');
+        li.textContent = log;
+        ul.appendChild(li);
+      });
+    }
+
+    function payWithCliq() {
+      const amount = parseFloat(document.getElementById("paymentAmount").value);
+      if (isNaN(amount) || amount <= 0) {
+        alert("يرجى إدخال مبلغ صحيح");
+        return;
+      }
+      const cliqUrl = `https://cliqar.com/pay?amount=${amount}`;
+      window.open(cliqUrl, '_blank');
+    }
+  </script>
+</body>
+</html>
